@@ -1,15 +1,16 @@
 import { Sentiment } from "./types";
 
+// Accessible Color Palette (Blue/Orange/Gold safe for color blindness)
 export const SENTIMENT_COLORS: Record<Sentiment, string> = {
-  Positive: '#16a34a', // green-600
-  Negative: '#dc2626', // red-600
-  Neutral: '#ca8a04',  // yellow-600
+  Positive: '#2563eb', // blue-600 (High contrast safe positive)
+  Negative: '#dc2626', // red-600 (High contrast negative)
+  Neutral: '#d97706',  // amber-600 (Distinct neutral)
 };
 
 export const SENTIMENT_BG_COLORS: Record<Sentiment, string> = {
-  Positive: '#dcfce7', // green-100
+  Positive: '#dbeafe', // blue-100
   Negative: '#fee2e2', // red-100
-  Neutral: '#fef9c3',  // yellow-100
+  Neutral: '#fef3c7',  // amber-100
 };
 
 export const ZOMATO_RED = '#cb202d';

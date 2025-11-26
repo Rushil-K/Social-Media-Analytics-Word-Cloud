@@ -42,6 +42,11 @@ const CONTEXT_WORDS = [
   'behavior', 'timing', 'promo code', 'bill', 'gps', 'location'
 ];
 
+// Map for canonical display (e.g. "pizza" -> "Pizza", "bad" -> "bad")
+const KEYWORD_MAP = new Map<string, string>();
+[...FOOD_ITEMS].forEach(w => KEYWORD_MAP.set(w.toLowerCase(), w)); // Title Case for Food
+[...POSITIVE_ADJECTIVES, ...NEGATIVE_ADJECTIVES, ...NEUTRAL_ADJECTIVES, ...CONTEXT_WORDS].forEach(w => KEYWORD_MAP.set(w.toLowerCase(), w)); // Keep original case
+
 // Helper to generate random int
 const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -70,7 +75,7 @@ const POSITIVE_TEMPLATES: TemplateFn[] = [
   (f, a, c) => `I'm impressed by the ${c}. ${f} was ${a}.`,
   (f, a, c) => `Five stars for the ${f}. Truly ${a}.`,
   (f, a, c) => `The ${f} arrived hot and ${a}.`,
-  (f, a, c) => `Such a ${a} dinner. The ${f} was spot on.`,
+  (f, a, c) => `Dinner was ${a}. The ${f} was spot on.`, // Fixed 'Such a' grammar
   (f, a, c) => `Delivered before time and the ${f} tasted ${a}.`
 ];
 
@@ -106,8 +111,8 @@ const NEUTRAL_TEMPLATES: TemplateFn[] = [
   (f, a, c) => `Average ${f}, but the price is ${a}.`,
   (f, a, c) => `The ${f} is ${a}, I've had better.`,
   (f, a, c) => `Portion was small but ${f} taste was ${a}.`,
-  (f, a, c) => `An ${a} meal. ${f} was okay.`,
-  (f, a, c) => `Just an ${a} ${c}. No complaints.`,
+  (f, a, c) => `Meal was ${a}. ${f} was okay.`, // Fixed 'An' grammar
+  (f, a, c) => `${c} was ${a}. No complaints.`, // Fixed 'Just an' grammar
   (f, a, c) => `The ${f} was ${a}. Might order again.`,
   (f, a, c) => `Decent ${f}, but delivery was ${a}.`,
   (f, a, c) => `Food was ${a}. Packaging needs improvement.`,
@@ -136,88 +141,14 @@ const generateComment = (sentiment: Sentiment): string => {
   return template(food, adj, context);
 };
 
-// Generate high-volume analytics data (Word Clouds)
-export const generateWordCloudData = (): Record<Sentiment, WordFrequency[]> => {
-    const generateWords = (sentiment: Sentiment, adjList: string[], count: number) => {
-    const words: WordFrequency[] = [];
-    const usedWords = new Set<string>();
+// --- CORE GENERATION LOGIC ---
 
-    // Add generic food items with random weights
-    FOOD_ITEMS.forEach(item => {
-      if(Math.random() > 0.6) { 
-         // Decreased variance to prevent too many "huge" words
-         const isTrend = Math.random() > 0.95; // Only 5% trends
-         words.push({ 
-             text: item, 
-             value: isTrend ? randomInt(180, 220) : randomInt(20, 80), 
-             sentiment 
-         });
-         usedWords.add(item);
-      }
-    });
-
-    // Add adjectives
-    adjList.forEach(adj => {
-       if (Math.random() > 0.3) {
-         const isDominant = Math.random() > 0.92; // Only 8% dominant
-         words.push({ 
-             text: adj, 
-             value: isDominant ? randomInt(150, 200) : randomInt(30, 90), 
-             sentiment 
-         });
-         usedWords.add(adj);
-       }
-    });
-
-    // Add context words
-    CONTEXT_WORDS.forEach(ctx => {
-      if (Math.random() > 0.5) {
-        words.push({ text: ctx, value: randomInt(20, 70), sentiment });
-        usedWords.add(ctx);
-      }
-    });
-
-    // Return a larger set for full screen, sorted by frequency
-    return words.sort((a, b) => b.value - a.value).slice(0, 100); 
-  };
-
-  return {
-    Positive: generateWords('Positive', POSITIVE_ADJECTIVES, 80),
-    Negative: generateWords('Negative', NEGATIVE_ADJECTIVES, 80),
-    Neutral: generateWords('Neutral', NEUTRAL_ADJECTIVES, 80),
-  };
-};
-
-// Generate a subset of "Raw" reviews for the list view
-export const generateRecentReviews = (count: number = 50): Review[] => {
-  const reviews: Review[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    const sentiment = Math.random() > 0.6 ? 'Positive' : (Math.random() > 0.4 ? 'Neutral' : 'Negative');
-    const date = new Date();
-    date.setDate(date.getDate() - randomInt(0, 30)); // Past 30 days
-    date.setHours(randomInt(9, 23), randomInt(0, 59));
-
-    reviews.push({
-      id: `rev-${Math.random().toString(36).substr(2, 9)}`,
-      date: date.toISOString(),
-      comment: generateComment(sentiment),
-      sentiment,
-      shares: randomInt(0, 50),
-      likes: randomInt(0, 200),
-      source: pick(['iOS', 'Android', 'Web', 'Aggregator']),
-    });
-  }
-
-  return reviews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-};
-
-// Generate Unique Large Dataset
-export const generateUniqueDataset = (count: number): Review[] => {
+// 1. Generate the Master Dataset (Source of Truth)
+export const generateMasterDataset = (count: number = 10001): Review[] => {
   const reviews: Review[] = [];
   const usedComments = new Set<string>();
   let attempts = 0;
-  const maxAttempts = count * 10; 
+  const maxAttempts = count * 20; 
 
   while (reviews.length < count && attempts < maxAttempts) {
     attempts++;
@@ -226,7 +157,7 @@ export const generateUniqueDataset = (count: number): Review[] => {
     const sentiment: Sentiment = rand > 0.45 ? 'Positive' : (rand > 0.15 ? 'Neutral' : 'Negative');
     const comment = generateComment(sentiment);
 
-    if (!usedComments.has(comment)) {
+    if (!usedComments.has(comment) || attempts > count * 5) { // Fallback if uniques exhausted
         usedComments.add(comment);
         
         const date = new Date();
@@ -234,7 +165,7 @@ export const generateUniqueDataset = (count: number): Review[] => {
         date.setHours(randomInt(8, 23), randomInt(0, 59), randomInt(0, 59));
 
         reviews.push({
-            id: `rev-${Math.random().toString(36).substr(2, 9)}-${attempts}`,
+            id: `rev-${Math.random().toString(36).substr(2, 9)}-${reviews.length}`,
             date: date.toISOString(),
             comment: comment,
             sentiment,
@@ -248,19 +179,69 @@ export const generateUniqueDataset = (count: number): Review[] => {
   return reviews.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 };
 
-export const getDashboardStats = (): DashboardStats => {
-  const total = 10001; 
-  const pos = Math.floor(total * 0.55);
-  const neg = Math.floor(total * 0.15);
-  const neu = total - pos - neg;
-  
-  return {
-    totalReviews: total,
-    avgRating: 4.1,
-    sentimentBreakdown: {
-      Positive: pos,
-      Negative: neg,
-      Neutral: neu
-    }
-  };
+// 2. Process Dataset to derive Analytics (Word Clouds + Stats)
+// This ensures the visuals match the data exactly.
+export const processDataset = (reviews: Review[]) => {
+    const wordCounts: Record<Sentiment, Record<string, number>> = {
+        Positive: {},
+        Negative: {},
+        Neutral: {}
+    };
+
+    const stats: DashboardStats = {
+        totalReviews: reviews.length,
+        avgRating: 0, 
+        sentimentBreakdown: { Positive: 0, Negative: 0, Neutral: 0 }
+    };
+
+    let totalRating = 0;
+
+    reviews.forEach(review => {
+        // Update Stats
+        stats.sentimentBreakdown[review.sentiment]++;
+        
+        // Simulating rating based on sentiment for the aggregate stat
+        let rating = 0;
+        if (review.sentiment === 'Positive') rating = randomInt(4, 5);
+        else if (review.sentiment === 'Neutral') rating = randomInt(3, 4);
+        else rating = randomInt(1, 2);
+        totalRating += rating;
+
+        // Extract Keywords for Word Cloud
+        // Simple tokenization: remove punctuation, split by space
+        const tokens = review.comment.toLowerCase().replace(/[.,!?;:"]/g, '').split(/\s+/);
+        
+        tokens.forEach(token => {
+            // Only count if it is a known keyword (Food, Adj, Context)
+            // This acts as a Stopword filter and ensures aesthetic quality
+            if (KEYWORD_MAP.has(token)) {
+                const displayWord = KEYWORD_MAP.get(token) || token;
+                
+                if (!wordCounts[review.sentiment][displayWord]) {
+                    wordCounts[review.sentiment][displayWord] = 0;
+                }
+                wordCounts[review.sentiment][displayWord]++;
+            }
+        });
+    });
+
+    stats.avgRating = parseFloat((totalRating / reviews.length).toFixed(1));
+
+    // Convert Word Count Maps to Sorted Arrays for D3
+    const wordCloudData: Record<Sentiment, WordFrequency[]> = {
+        Positive: [], Negative: [], Neutral: []
+    };
+
+    (['Positive', 'Negative', 'Neutral'] as Sentiment[]).forEach(s => {
+        wordCloudData[s] = Object.entries(wordCounts[s])
+            .map(([text, value]) => ({
+                text, 
+                value, 
+                sentiment: s
+            }))
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 100); // Top 100 words per sentiment
+    });
+
+    return { stats, wordCloudData };
 };
