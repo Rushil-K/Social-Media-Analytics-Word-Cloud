@@ -1,0 +1,5 @@
+{
+  "name": "Zomato Sentiment Lens",
+  "description": "A real-time sentiment analysis dashboard visualizing over 10,000 Zomato reviews using interactive, physics-based word clouds.",
+  "requestFramePermissions": []
+}
